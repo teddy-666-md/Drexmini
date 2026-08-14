@@ -1,0 +1,25 @@
+{
+    "name": "Trash-Core",
+    "description": "A whatsApp bot based on Baileysjs linrary (Ts+Js) with Multi Device support",
+    "repository": "https://github.com/Tennor-modz/trashcore-ultra",
+    "logo": "https://telegra.ph/file/7aa528767ed96ddc17bc2.jpg",
+    "keywords": ["nodejs", "bot", "whatsapp bot", "whatsapp automation", "multi device"],
+    "env": {
+    "DATABASE_URL": {
+      "description": "put your database url here. Must begin with postgress",
+      "value": "postgress....",
+      "required": true
+    }
+    },
+    "buildpacks": [
+      {
+        "url": "heroku/nodejs"
+    },
+    {
+      "url": "https://github.com/jonathanong/heroku-buildpack-ffmpeg-latest"
+    },
+    {
+      "url": "https://github.com/clhuang/heroku-buildpack-webp-binaries.git"
+          }
+     ]
+} 

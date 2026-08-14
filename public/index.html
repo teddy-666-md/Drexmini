@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>TelexWA Panel</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    :root {
+      --bg: #080c10; --surface: #0e1318; --surface2: #141b22; --border: #1c2530;
+      --accent: #00e5ff; --accent-dim: rgba(0,229,255,.12); --accent-glow: rgba(0,229,255,.25);
+      --green: #00ff9d; --green-dim: rgba(0,255,157,.1);
+      --danger: #ff4d6d; --danger-dim: rgba(255,77,109,.1);
+      --warn: #ffb347; --warn-dim: rgba(255,179,71,.1);
+      --text: #e2eaf2; --muted: #4a5c6a; --muted2: #2a3a48;
+      --radius: 16px; --radius-sm: 10px;
+    }
+    html { scroll-behavior: smooth; }
+    body { background: var(--bg); color: var(--text); font-family: 'Outfit', sans-serif; min-height: 100dvh; overflow-x: hidden; }
+    body::before { content:''; position:fixed; inset:0; background-image: linear-gradient(rgba(0,229,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.025) 1px,transparent 1px); background-size:32px 32px; pointer-events:none; z-index:0; }
+    body::after { content:''; position:fixed; top:-20%; right:-20%; width:70%; height:60%; background:radial-gradient(ellipse,rgba(0,229,255,.06) 0%,transparent 65%); pointer-events:none; z-index:0; }
+
+    /* LOCK */
+    #lockScreen { position:fixed; inset:0; z-index:200; background:var(--bg); display:flex; align-items:center; justify-content:center; padding:1.5rem; }
+    #lockScreen::before { content:''; position:absolute; inset:0; background-image:linear-gradient(rgba(0,229,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.025) 1px,transparent 1px); background-size:32px 32px; pointer-events:none; }
+    .lock-card { position:relative; z-index:1; width:100%; max-width:360px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:2rem; text-align:center; }
+    .lock-icon { font-size:2.5rem; margin-bottom:1rem; display:block; }
+    .lock-title { font-size:1.4rem; font-weight:800; letter-spacing:-.02em; margin-bottom:.35rem; }
+    .lock-sub { font-size:.85rem; color:var(--muted); margin-bottom:1.5rem; }
+    .lock-card input { width:100%; background:var(--bg); border:1.5px solid var(--border); border-radius:var(--radius-sm); padding:.9rem 1rem; color:var(--text); font-family:'JetBrains Mono',monospace; font-size:1rem; letter-spacing:.08em; outline:none; transition:border-color .2s,box-shadow .2s; -webkit-appearance:none; text-align:center; margin-bottom:.75rem; }
+    .lock-card input:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim); }
+    .lock-error { font-family:'JetBrains Mono',monospace; font-size:.75rem; color:var(--danger); margin-bottom:.75rem; display:none; }
+
+    /* LAYOUT */
+    .wrap { position:relative; z-index:1; max-width:480px; margin:0 auto; padding:0 0 2rem; min-height:100dvh; display:flex; flex-direction:column; }
+
+    /* HEADER */
+    header { display:flex; align-items:center; justify-content:space-between; padding:1rem 1.25rem; background:rgba(8,12,16,.85); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:50; }
+    .logo { display:flex; align-items:center; gap:.6rem; font-size:1.2rem; font-weight:800; letter-spacing:-.02em; }
+    .logo-icon { width:32px; height:32px; background:linear-gradient(135deg,var(--accent),var(--green)); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:.85rem; box-shadow:0 0 16px var(--accent-glow); }
+    .logo span { color:var(--accent); }
+    .header-right { display:flex; align-items:center; gap:.6rem; }
+    .status-pill { display:flex; align-items:center; gap:.4rem; font-family:'JetBrains Mono',monospace; font-size:.65rem; padding:.3rem .7rem; border-radius:20px; background:var(--green-dim); border:1px solid rgba(0,255,157,.2); color:var(--green); }
+    .status-dot { width:6px; height:6px; background:var(--green); border-radius:50%; box-shadow:0 0 6px var(--green); animation:blink 2s infinite; }
+    .lock-btn { width:32px; height:32px; border-radius:8px; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-size:.9rem; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .2s; }
+    .lock-btn:hover { border-color:var(--accent); color:var(--accent); }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    .content { flex:1; padding:1.25rem; display:flex; flex-direction:column; gap:1rem; }
+
+    /* STATS BAR */
+    .stats-bar {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .6rem;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: .9rem 1rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    }
+    .stat-card.green::before { background: linear-gradient(90deg, transparent, var(--green), transparent); }
+    .stat-label { font-family:'JetBrains Mono',monospace; font-size:.6rem; color:var(--muted); letter-spacing:.1em; text-transform:uppercase; margin-bottom:.35rem; }
+    .stat-value { font-family:'JetBrains Mono',monospace; font-size:1.3rem; font-weight:700; color:var(--text); line-height:1; }
+    .stat-value span { font-size:.75rem; color:var(--muted); font-weight:400; }
+    .stat-sub { font-size:.7rem; color:var(--muted); margin-top:.25rem; font-family:'JetBrains Mono',monospace; }
+
+    /* SESSION PROGRESS BAR */
+    .session-progress {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: .9rem 1rem;
+    }
+    .progress-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:.6rem; }
+    .progress-label { font-family:'JetBrains Mono',monospace; font-size:.65rem; color:var(--muted); letter-spacing:.1em; text-transform:uppercase; }
+    .progress-count { font-family:'JetBrains Mono',monospace; font-size:.75rem; color:var(--accent); }
+    .progress-track { height:6px; background:var(--surface2); border-radius:3px; overflow:hidden; }
+    .progress-fill { height:100%; border-radius:3px; background:linear-gradient(90deg,var(--accent),var(--green)); transition:width .6s ease; min-width:2px; }
+    .progress-fill.warn { background:linear-gradient(90deg,var(--warn),var(--danger)); }
+
+    /* HERO */
+    .hero { padding:1.5rem; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); position:relative; overflow:hidden; }
+    .hero::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,transparent,var(--accent),transparent); }
+    .hero-label { font-family:'JetBrains Mono',monospace; font-size:.65rem; color:var(--accent); letter-spacing:.15em; text-transform:uppercase; margin-bottom:.6rem; }
+    .hero h1 { font-size:1.75rem; font-weight:800; line-height:1.15; letter-spacing:-.03em; margin-bottom:.5rem; }
+    .hero h1 em { font-style:normal; color:var(--accent); }
+    .hero p { font-size:.85rem; color:var(--muted); line-height:1.6; }
+
+    /* CARD */
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+    .card-header { padding:.9rem 1.25rem; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:.6rem; font-family:'JetBrains Mono',monospace; font-size:.7rem; color:var(--muted); letter-spacing:.1em; text-transform:uppercase; }
+    .card-header-dot { width:7px; height:7px; background:var(--accent); border-radius:50%; flex-shrink:0; }
+    .card-body { padding:1.25rem; }
+
+    /* FORM */
+    .field { display:flex; flex-direction:column; gap:.5rem; margin-bottom:1rem; }
+    .field label { font-family:'JetBrains Mono',monospace; font-size:.68rem; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; }
+    input[type="tel"],input[type="text"],input[type="password"] { width:100%; background:var(--bg); border:1.5px solid var(--border); border-radius:var(--radius-sm); padding:.9rem 1rem; color:var(--text); font-family:'JetBrains Mono',monospace; font-size:1.1rem; letter-spacing:.05em; outline:none; transition:border-color .2s,box-shadow .2s; -webkit-appearance:none; }
+    input:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim); }
+    input::placeholder { color:var(--muted2); }
+
+    /* BUTTONS */
+    .btn { width:100%; padding:1rem; border-radius:var(--radius-sm); font-family:'Outfit',sans-serif; font-size:1rem; font-weight:700; cursor:pointer; border:none; transition:all .2s; display:flex; align-items:center; justify-content:center; gap:.5rem; min-height:52px; }
+    .btn:active { transform:scale(.97); }
+    .btn-primary { background:linear-gradient(135deg,var(--accent),#0099bb); color:#080c10; }
+    .btn-primary:hover:not(:disabled) { box-shadow:0 0 24px var(--accent-glow); }
+    .btn-primary:disabled { opacity:.45; cursor:not-allowed; transform:none; }
+    .btn-danger { background:var(--danger-dim); border:1px solid rgba(255,77,109,.25); color:var(--danger); font-size:.85rem; padding:.6rem 1rem; width:auto; min-height:40px; border-radius:8px; }
+    .btn-copy { background:var(--accent-dim); border:1px solid rgba(0,229,255,.2); color:var(--accent); font-size:.8rem; padding:.5rem .9rem; width:auto; min-height:36px; border-radius:8px; font-weight:600; }
+
+    .status-msg { font-family:'JetBrains Mono',monospace; font-size:.78rem; padding:.75rem 1rem; border-radius:var(--radius-sm); margin-top:.75rem; display:none; line-height:1.5; }
+    .msg-ok   { background:var(--green-dim);  color:var(--green);  border:1px solid rgba(0,255,157,.2); }
+    .msg-err  { background:var(--danger-dim); color:var(--danger); border:1px solid rgba(255,77,109,.2); }
+    .msg-info { background:var(--warn-dim);   color:var(--warn);   border:1px solid rgba(255,179,71,.2); }
+
+    #codeDisplay { display:none; margin-top:1rem; }
+    .code-box { background:var(--bg); border:1.5px solid rgba(0,229,255,.3); border-radius:var(--radius-sm); padding:1.25rem 1rem; text-align:center; position:relative; }
+    .code-box::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,var(--accent),transparent); }
+    .code-label { font-family:'JetBrains Mono',monospace; font-size:.65rem; color:var(--accent); letter-spacing:.15em; text-transform:uppercase; margin-bottom:.75rem; }
+    .code-value { font-family:'JetBrains Mono',monospace; font-size:2.2rem; font-weight:500; letter-spacing:.2em; color:var(--text); margin-bottom:.75rem; word-break:break-all; }
+    .code-actions { display:flex; align-items:center; justify-content:center; gap:.6rem; }
+    .code-hint { font-family:'JetBrains Mono',monospace; font-size:.68rem; color:var(--muted); margin-top:.75rem; line-height:1.5; }
+
+    .steps-toggle { display:flex; align-items:center; justify-content:space-between; cursor:pointer; padding:.9rem 1.25rem; user-select:none; }
+    .steps-toggle-label { font-family:'JetBrains Mono',monospace; font-size:.7rem; color:var(--muted); letter-spacing:.1em; text-transform:uppercase; display:flex; align-items:center; gap:.6rem; }
+    .chevron { font-size:.8rem; color:var(--muted); transition:transform .25s; }
+    .chevron.open { transform:rotate(180deg); }
+    .steps-body { display:none; padding:0 1.25rem 1.25rem; flex-direction:column; gap:.6rem; }
+    .steps-body.open { display:flex; }
+    .step { display:flex; align-items:flex-start; gap:.85rem; padding:.85rem 1rem; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); }
+    .step-num { font-family:'JetBrains Mono',monospace; font-size:.65rem; color:var(--accent); background:var(--accent-dim); border:1px solid rgba(0,229,255,.2); border-radius:6px; width:26px; height:26px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .step p { font-size:.83rem; color:var(--muted); line-height:1.55; }
+    .step p strong { color:var(--text); }
+
+    #sessionList { display:flex; flex-direction:column; gap:.6rem; }
+    .session-item { display:flex; align-items:center; justify-content:space-between; padding:.9rem 1rem; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); gap:.5rem; }
+    .session-left { display:flex; align-items:center; gap:.75rem; min-width:0; }
+    .session-dot { width:9px; height:9px; flex-shrink:0; background:var(--green); border-radius:50%; box-shadow:0 0 8px var(--green); animation:blink 2s infinite; }
+    .session-info { min-width:0; }
+    .session-num { font-family:'JetBrains Mono',monospace; font-size:.88rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .session-uptime { font-family:'JetBrains Mono',monospace; font-size:.65rem; color:var(--muted); margin-top:.15rem; }
+
+    .empty-state { text-align:center; padding:2rem 1rem; color:var(--muted); font-family:'JetBrains Mono',monospace; font-size:.78rem; line-height:1.6; }
+    .empty-icon { font-size:2rem; margin-bottom:.5rem; display:block; }
+
+    /* DELETE MODAL */
+    .modal-overlay { position:fixed; inset:0; z-index:150; background:rgba(0,0,0,.7); backdrop-filter:blur(6px); display:none; align-items:flex-end; justify-content:center; padding:1rem; }
+    .modal-overlay.open { display:flex; }
+    .modal { width:100%; max-width:420px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1.5rem; animation:slideUp .25s ease; }
+    @keyframes slideUp { from{transform:translateY(40px);opacity:0} to{transform:translateY(0);opacity:1} }
+    .modal-title { font-size:1.1rem; font-weight:700; margin-bottom:.35rem; }
+    .modal-sub { font-size:.82rem; color:var(--muted); margin-bottom:1.25rem; line-height:1.5; }
+    .modal-phone { font-family:'JetBrains Mono',monospace; color:var(--accent); }
+    .modal-field { display:flex; flex-direction:column; gap:.4rem; margin-bottom:1rem; }
+    .modal-field label { font-family:'JetBrains Mono',monospace; font-size:.68rem; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; }
+    .modal-btns { display:flex; gap:.6rem; }
+    .btn-cancel { flex:1; background:var(--surface2); border:1px solid var(--border); color:var(--muted); font-family:'Outfit',sans-serif; font-size:.9rem; font-weight:600; padding:.8rem; border-radius:var(--radius-sm); cursor:pointer; min-height:46px; transition:all .2s; }
+    .btn-confirm-delete { flex:2; background:var(--danger); border:none; color:#fff; font-family:'Outfit',sans-serif; font-size:.9rem; font-weight:700; padding:.8rem; border-radius:var(--radius-sm); cursor:pointer; min-height:46px; transition:all .2s; display:flex; align-items:center; justify-content:center; gap:.4rem; }
+    .btn-confirm-delete:disabled { opacity:.5; cursor:not-allowed; }
+    .modal-error { font-family:'JetBrains Mono',monospace; font-size:.75rem; color:var(--danger); margin-bottom:.75rem; display:none; }
+
+    .spinner { width:18px; height:18px; border:2px solid rgba(8,12,16,.4); border-top-color:#080c10; border-radius:50%; animation:spin .6s linear infinite; flex-shrink:0; }
+    .spinner-sm { width:14px; height:14px; border:2px solid rgba(255,255,255,.3); border-top-color:#fff; border-radius:50%; animation:spin .6s linear infinite; flex-shrink:0; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+
+    #toast { position:fixed; bottom:1.5rem; left:50%; transform:translateX(-50%) translateY(100px); background:var(--surface2); border:1px solid var(--border); border-radius:24px; padding:.65rem 1.2rem; font-family:'JetBrains Mono',monospace; font-size:.78rem; color:var(--green); box-shadow:0 8px 32px rgba(0,0,0,.4); z-index:999; transition:transform .3s cubic-bezier(.34,1.56,.64,1); white-space:nowrap; }
+    #toast.show { transform:translateX(-50%) translateY(0); }
+
+    footer { text-align:center; padding:1.25rem; color:var(--muted); font-family:'JetBrains Mono',monospace; font-size:.65rem; border-top:1px solid var(--border); letter-spacing:.05em; margin-top:auto; }
+
+    @media (min-width:520px) {
+      .wrap { padding-bottom:3rem; }
+      .hero h1 { font-size:2.2rem; }
+      .code-value { font-size:2.6rem; }
+      .steps-body { display:flex !important; }
+      .chevron { display:none; }
+      .modal-overlay { align-items:center; }
+    }
+
+    /* ── SESSION PASSWORD BOX ── */
+    .pwd-box {
+      margin-top: .9rem;
+      background: rgba(255,179,71,.06);
+      border: 1.5px solid rgba(255,179,71,.35);
+      border-radius: var(--radius-sm);
+      padding: 1.1rem 1rem;
+      text-align: center;
+    }
+    .pwd-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .65rem; color: var(--warn);
+      letter-spacing: .15em; text-transform: uppercase;
+      margin-bottom: .6rem;
+    }
+    .pwd-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 2rem; font-weight: 700;
+      letter-spacing: .25em; color: var(--warn);
+      margin-bottom: .6rem;
+    }
+    .pwd-warn {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .63rem; color: var(--muted);
+      margin-top: .6rem; line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+<!-- LOCK -->
+<div id="lockScreen">
+  <div class="lock-card">
+    <span class="lock-icon">🔐</span>
+    <div class="lock-title">TelexWA Panel</div>
+    <div class="lock-sub">Enter your panel password to continue</div>
+    <div class="lock-error" id="lockError">Incorrect password, try again</div>
+    <input type="password" id="lockInput" placeholder="••••••••" autocomplete="current-password" />
+    <button class="btn btn-primary" onclick="unlock()">Unlock</button>
+  </div>
+</div>
+
+<!-- DELETE MODAL -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <div class="modal-title">🗑 Delete Session</div>
+    <div class="modal-sub">This will immediately disconnect <span class="modal-phone" id="deletePhone"></span> and remove it from the database.</div>
+    <div class="modal-error" id="modalError"></div>
+    <div class="modal-field">
+      <label>Confirm Password</label>
+      <input type="password" id="deletePassword" placeholder="••••••••" />
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeDeleteModal()">Cancel</button>
+      <button class="btn-confirm-delete" id="confirmDeleteBtn" onclick="confirmDelete()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      Telex<span>WA</span>
+    </div>
+    <div class="header-right">
+      <div class="status-pill"><div class="status-dot"></div>ONLINE</div>
+      <div class="lock-btn" onclick="lockPanel()" title="Lock panel">🔒</div>
+    </div>
+  </header>
+
+  <div class="content">
+
+    <!-- STATS -->
+    <div class="stats-bar">
+      <div class="stat-card green">
+        <div class="stat-label">Sessions</div>
+        <div class="stat-value" id="statSessions">—<span id="statMax"> / 30</span></div>
+        <div class="stat-sub" id="statSlots">— slots free</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Server Uptime</div>
+        <div class="stat-value" id="statUptime">—</div>
+        <div class="stat-sub" id="statUptimeSub">since last restart</div>
+      </div>
+    </div>
+
+    <!-- SESSION PROGRESS -->
+    <div class="session-progress">
+      <div class="progress-header">
+        <span class="progress-label">Capacity</span>
+        <span class="progress-count" id="progressCount">0 / 30</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+    </div>
+
+    <!-- HERO -->
+    <div class="hero">
+      <div class="hero-label">WhatsApp Bot Panel</div>
+      <h1>Pair your<br><em>WhatsApp</em><br>from here</h1>
+      <p>No Telegram needed. Enter your number, get a code, enter it in WhatsApp.</p>
+    </div>
+
+    <!-- CONNECT -->
+    <div class="card">
+      <div class="card-header"><div class="card-header-dot"></div>New Connection</div>
+      <div class="card-body">
+        <div class="field">
+          <label>WhatsApp Number</label>
+          <input type="tel" id="phoneInput" placeholder="254712345678" maxlength="20" inputmode="numeric" pattern="[0-9]*" />
+        </div>
+        <button class="btn btn-primary" id="connectBtn" onclick="requestPair()">Connect</button>
+        <div class="status-msg" id="statusMsg"></div>
+        <div id="codeDisplay">
+          <div class="code-box">
+            <div class="code-label">Your Pairing Code</div>
+            <div class="code-value" id="codeVal">— — — —</div>
+            <div class="code-actions"><button class="btn btn-copy" onclick="copyCode()">⎘ Copy</button></div>
+            <div class="code-hint">WhatsApp → Linked Devices → Link a Device<br>→ tap "Link with phone number instead"</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- HOW TO -->
+    <div class="card">
+      <div class="steps-toggle" onclick="toggleSteps(this)">
+        <div class="steps-toggle-label"><div class="card-header-dot"></div>How to pair</div>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="steps-body" id="stepsBody">
+        <div class="step"><div class="step-num">01</div><p><strong>Enter your number</strong><br>Country code + digits only. E.g. <code>254712345678</code></p></div>
+        <div class="step"><div class="step-num">02</div><p><strong>Tap Connect</strong><br>Wait a few seconds for your pairing code.</p></div>
+        <div class="step"><div class="step-num">03</div><p><strong>Open WhatsApp</strong><br>Linked Devices → Link a Device → enter code instead of QR.</p></div>
+        <div class="step"><div class="step-num">04</div><p><strong>Done!</strong><br>Session saves to database — survives restarts automatically.</p></div>
+      </div>
+    </div>
+
+    <!-- SESSIONS -->
+    <div class="card">
+      <div class="card-header"><div class="card-header-dot"></div>Active Sessions</div>
+      <div class="card-body" style="padding-top:.75rem;">
+        <div id="sessionList"><div class="empty-state"><span class="empty-icon">📡</span>Loading…</div></div>
+      </div>
+    </div>
+
+  </div>
+  <footer>TelexWA Web Panel &nbsp;·&nbsp; @trashcore/baileys &nbsp;·&nbsp; Max <span id="footerMax">30</span> sessions</footer>
+</div>
+
+<div id="toast">✓ Done</div>
+
+<script>
+  let sessionToken = sessionStorage.getItem('panelAuth');
+  let pendingDeletePhone = null;
+  let maxSessions = 30;
+
+  // ── LOCK ──
+  function unlock() {
+    const pw = document.getElementById('lockInput').value;
+    const err = document.getElementById('lockError');
+    if (!pw) return;
+    fetch('/api/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: pw }) })
+      .then(r => r.json()).then(data => {
+        if (data.ok) {
+          sessionStorage.setItem('panelAuth', pw);
+          sessionToken = pw;
+          document.getElementById('lockScreen').style.display = 'none';
+          err.style.display = 'none';
+          loadStatus();
+          loadSessions();
+        } else {
+          err.style.display = 'block';
+          document.getElementById('lockInput').value = '';
+          document.getElementById('lockInput').focus();
+        }
+      }).catch(() => { err.textContent = 'Server error'; err.style.display = 'block'; });
+  }
+
+  function lockPanel() {
+    sessionStorage.removeItem('panelAuth');
+    sessionToken = null;
+    document.getElementById('lockInput').value = '';
+    document.getElementById('lockScreen').style.display = 'flex';
+  }
+
+  if (sessionToken) {
+    fetch('/api/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: sessionToken }) })
+      .then(r => r.json()).then(data => {
+        if (data.ok) {
+          document.getElementById('lockScreen').style.display = 'none';
+          loadStatus();
+          loadSessions();
+        } else {
+          sessionStorage.removeItem('panelAuth');
+          sessionToken = null;
+        }
+      }).catch(() => {});
+  }
+
+  document.getElementById('lockInput').addEventListener('keydown', e => { if (e.key==='Enter') unlock(); });
+
+  // ── STATS ──
+  function formatUptime(secs) {
+    const d = Math.floor(secs / 86400);
+    const h = Math.floor((secs % 86400) / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (d > 0) return d + 'd ' + h + 'h';
+    if (h > 0) return h + 'h ' + m + 'm';
+    if (m > 0) return m + 'm ' + s + 's';
+    return s + 's';
+  }
+
+  async function loadStatus() {
+    try {
+      const res = await fetch('/api/status');
+      const data = await res.json();
+      maxSessions = data.maxSessions || 30;
+      const count = data.sessions || 0;
+      const free = maxSessions - count;
+      const pct = Math.round((count / maxSessions) * 100);
+
+      document.getElementById('statSessions').innerHTML = count + '<span id="statMax"> / ' + maxSessions + '</span>';
+      document.getElementById('statSlots').textContent = free + ' slot' + (free !== 1 ? 's' : '') + ' free';
+      document.getElementById('statUptime').textContent = formatUptime(data.uptime || 0);
+      document.getElementById('progressCount').textContent = count + ' / ' + maxSessions;
+      document.getElementById('footerMax').textContent = maxSessions;
+
+      const fill = document.getElementById('progressFill');
+      fill.style.width = pct + '%';
+      fill.className = 'progress-fill' + (pct >= 80 ? ' warn' : '');
+    } catch(e) {}
+  }
+
+  // ── DELETE MODAL ──
+  function openDeleteModal(phone) {
+    pendingDeletePhone = phone;
+    document.getElementById('deletePhone').textContent = phone;
+    document.getElementById('deletePassword').value = '';
+    document.getElementById('modalError').style.display = 'none';
+    document.getElementById('deleteModal').classList.add('open');
+    setTimeout(() => document.getElementById('deletePassword').focus(), 100);
+  }
+  function closeDeleteModal() {
+    document.getElementById('deleteModal').classList.remove('open');
+    pendingDeletePhone = null;
+  }
+  document.getElementById('deleteModal').addEventListener('click', function(e) { if (e.target===this) closeDeleteModal(); });
+  document.getElementById('deletePassword').addEventListener('keydown', e => { if (e.key==='Enter') confirmDelete(); if (e.key==='Escape') closeDeleteModal(); });
+
+  async function confirmDelete() {
+    const password = document.getElementById('deletePassword').value;
+    const btn = document.getElementById('confirmDeleteBtn');
+    const err = document.getElementById('modalError');
+    if (!password) return;
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner-sm"></div> Deleting…';
+    err.style.display = 'none';
+    try {
+      const res = await fetch('/api/delsession', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ phone: pendingDeletePhone, password }) });
+      const data = await res.json();
+      if (data.ok) {
+        closeDeleteModal();
+        showToast('🗑 Session deleted');
+        loadStatus();
+        loadSessions();
+      } else {
+        err.textContent = data.error || 'Failed';
+        err.style.display = 'block';
+      }
+    } catch(e) { err.textContent = 'Server error'; err.style.display = 'block'; }
+    btn.disabled = false;
+    btn.innerHTML = 'Delete';
+  }
+
+  // ── CONNECT ──
+  async function requestPair() {
+    const phone = document.getElementById('phoneInput').value.trim().replace(/\s+/g,'');
+    const btn = document.getElementById('connectBtn');
+    const statusMsg = document.getElementById('statusMsg');
+    const codeDisplay = document.getElementById('codeDisplay');
+
+    if (!phone || !/^\d{7,15}$/.test(phone)) {
+      showMsg(statusMsg, '⚠ Enter a valid number with country code', 'err');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Connecting…';
+    codeDisplay.style.display = 'none';
+    showMsg(statusMsg, '⏳ Creating session, please wait…', 'info');
+
+    try {
+      const res = await fetch('/api/connect', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ phone }) });
+      const data = await res.json();
+      if (data.code) {
+        document.getElementById('codeVal').textContent = data.code;
+        codeDisplay.style.display = 'block';
+        showMsg(statusMsg, '✓ Pairing code ready — enter it in WhatsApp now!', 'ok');
+        codeDisplay.scrollIntoView({ behavior:'smooth', block:'nearest' });
+        loadStatus();
+        loadSessions();
+      } else {
+        showMsg(statusMsg, '✗ ' + (data.error || 'Failed to generate code'), 'err');
+      }
+    } catch(e) { showMsg(statusMsg, '✗ Server error', 'err'); }
+
+    btn.disabled = false;
+    btn.innerHTML = 'Connect';
+  }
+
+  // ── SESSIONS ──
+  async function loadSessions() {
+    const list = document.getElementById('sessionList');
+    try {
+      const res = await fetch('/api/sessions');
+      const data = await res.json();
+      if (!data.sessions || data.sessions.length === 0) {
+        list.innerHTML = '<div class="empty-state"><span class="empty-icon">🔌</span>No active sessions</div>';
+        return;
+      }
+      list.innerHTML = data.sessions.map((s,i) => `
+        <div class="session-item">
+          <div class="session-left">
+            <div class="session-dot"></div>
+            <div class="session-info">
+              <div class="session-num">${s.phoneNumber}</div>
+              <div class="session-uptime">${formatSessionUptime(s.connectedAt)}</div>
+            </div>
+          </div>
+          <button class="btn btn-danger" onclick="openDeleteModal('${s.phoneNumber}')">Delete</button>
+        </div>
+      `).join('');
+    } catch(e) {
+      list.innerHTML = '<div class="empty-state"><span class="empty-icon">⚠️</span>Could not load</div>';
+    }
+  }
+
+  function formatSessionUptime(ts) {
+    if (!ts) return 'connected';
+    const secs = Math.floor((Date.now() - ts) / 1000);
+    if (secs < 60) return secs + 's uptime';
+    if (secs < 3600) return Math.floor(secs/60) + 'm uptime';
+    return Math.floor(secs/3600) + 'h ' + Math.floor((secs%3600)/60) + 'm uptime';
+  }
+
+  // ── HELPERS ──
+  function toggleSteps(el) {
+    document.getElementById('stepsBody').classList.toggle('open');
+    el.querySelector('.chevron').classList.toggle('open');
+  }
+  function copyCode() {
+    const code = document.getElementById('codeVal').textContent.trim();
+    if (code && code !== '— — — —') navigator.clipboard?.writeText(code).then(() => showToast('✓ Code copied!'));
+  }
+  function showMsg(el, text, type) { el.textContent = text; el.className = 'status-msg msg-' + type; el.style.display = 'block'; }
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  document.getElementById('phoneInput').addEventListener('keydown', e => { if (e.key==='Enter') requestPair(); });
+
+  // Refresh every 15s
+  setInterval(() => { loadStatus(); loadSessions(); }, 15000);
+</script>
+</body>
+</html>

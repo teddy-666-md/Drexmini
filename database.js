@@ -1,17 +1,19 @@
 const { Pool } = require('pg');
 
 const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) throw new Error("DATABASE_URL not set");
+let pool = null;
 
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
-
-let dbReady = false;
+if (DATABASE_URL) {
+  pool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+  });
+} else {
+  console.warn('[DB] DATABASE_URL not set. DB functions will fail until you set it.');
+}
 
 async function initDatabase() {
-  // Settings are now scoped per phone number
+  if (!pool) throw new Error("DATABASE_URL not set");
   await pool.query(`
     CREATE TABLE IF NOT EXISTS settings (
       phone TEXT NOT NULL,
@@ -32,12 +34,11 @@ async function initDatabase() {
     )
   `);
 
-  dbReady = true;
   console.log('[DB] Postgres tables ready');
 }
 
-// phone = bot's WhatsApp number e.g. "254788460896"
 async function setSetting(phone, key, value) {
+  if (!pool) throw new Error("DATABASE_URL not set");
   const val = JSON.stringify(value);
   await pool.query(`
     INSERT INTO settings (phone, key, value) VALUES ($1, $2, $3)
@@ -46,6 +47,7 @@ async function setSetting(phone, key, value) {
 }
 
 async function getSetting(phone, key, defaultValue = null) {
+  if (!pool) return defaultValue;
   const res = await pool.query(
     "SELECT value FROM settings WHERE phone = $1 AND key = $2",
     [phone, key]
@@ -59,7 +61,7 @@ async function getSetting(phone, key, defaultValue = null) {
 }
 
 async function cleanupOldMessages(hours = 24) {
-  if (!dbReady) return 0;
+  if (!pool) return 0;
   const cutoff = Date.now() - hours * 60 * 60 * 1000;
   const res = await pool.query("DELETE FROM messages WHERE timestamp < $1", [cutoff]);
   return res.rowCount || 0;

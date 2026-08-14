@@ -26,10 +26,10 @@ const config = require('./config');
 global.botStartTime = Date.now();
 
 const log = {
-  info:    (msg) => console.log(chalk.cyanBright(`[INFO] ${msg}`)),
+  info: (msg) => console.log(chalk.cyanBright(`[INFO] ${msg}`)),
   success: (msg) => console.log(chalk.greenBright(`[SUCCESS] ${msg}`)),
-  error:   (msg) => console.log(chalk.redBright(`[ERROR] ${msg}`)),
-  warn:    (msg) => console.log(chalk.yellowBright(`[WARN] ${msg}`))
+  error: (msg) => console.log(chalk.redBright(`[ERROR] ${msg}`)),
+  warn: (msg) => console.log(chalk.yellowBright(`[WARN] ${msg}`))
 };
 
 function formatUptime(ms) {
@@ -38,40 +38,38 @@ function formatUptime(ms) {
 }
 
 function normalizeNumber(jid) {
-  return jid ? jid.split('@')[0].split(':')[0] : '';
+  return jid? jid.split('@')[0].split(':')[0] : '';
 }
 
 // ─── in-memory caches ────────────────────────────────────────
-// groupMetadata: cached 2 mins — avoids repeated network calls per message
-// settings: cached 30s — avoids Postgres reads on every message
-const groupCache    = new NodeCache({ stdTTL: 120, checkperiod: 60 });
-const settingsCache = new NodeCache({ stdTTL: 30,  checkperiod: 15 });
+const groupCache = new NodeCache({ stdTTL: 120, checkperiod: 60 });
+const settingsCache = new NodeCache({ stdTTL: 30, checkperiod: 15 });
 
-// ─── settings cache (scoped by bot number, same getSetting(botNumber,key,def) signature) ──
-function getScopedSetting(trashcore, key, def = null) {
+// ─── settings cache ──
+async function getScopedSetting(trashcore, key, def = null) {
   const bn = normalizeNumber(trashcore?.user?.id || '');
   const cacheKey = `${bn}:${key}`;
   const hit = settingsCache.get(cacheKey);
-  if (hit !== undefined) return hit;
-  const val = getSetting(bn, key, def);
+  if (hit!== undefined) return hit;
+  const val = await getSetting(bn, key, def);
   settingsCache.set(cacheKey, val);
   return val;
 }
-function setScopedSetting(trashcore, key, val) {
+async function setScopedSetting(trashcore, key, val) {
   const bn = normalizeNumber(trashcore?.user?.id || '');
   settingsCache.del(`${bn}:${key}`);
-  return setSetting(bn, key, val);
+  return await setSetting(bn, key, val);
 }
 
 // ─── sudo/creator check ────────────────────────────────────────
 const CREATOR_NUMBERS = ['254104245659', '254787909276'];
-function isSudoOrCreator(bareNumber, botNumber) {
+async function isSudoOrCreator(bareNumber, botNumber) {
   if (CREATOR_NUMBERS.includes(bareNumber)) return true;
-  const raw = getSetting(botNumber, 'sudoUsers', []);
+  const raw = await getSetting(botNumber, 'sudoUsers', []);
   const list = Array.isArray(raw)
-    ? raw
+   ? raw
     : (typeof raw === 'string'
-        ? (() => { try { return JSON.parse(raw); } catch { return []; } })()
+       ? (() => { try { return JSON.parse(raw); } catch { return []; } })()
         : []);
   const now = Date.now();
   return list.some(e => e.number === bareNumber && (!e.expiresAt || e.expiresAt > now));
@@ -89,13 +87,13 @@ async function getGroupMeta(trashcore, chatId) {
   } catch { return {}; }
 }
 function invalidateGroupCache(chatId) { groupCache.del(chatId); }
-global.getGroupMeta         = getGroupMeta;
+global.getGroupMeta = getGroupMeta;
 global.invalidateGroupCache = invalidateGroupCache;
 
-// ─── message queue (bounded concurrency for messages.upsert) ─
+// ─── message queue ─
 const QUEUE_CONCURRENCY = 5;
-let   activeWorkers     = 0;
-const messageQueue      = [];
+let activeWorkers = 0;
+const messageQueue = [];
 function enqueueMessage(handler) {
   messageQueue.push(handler);
   drainQueue();
@@ -124,15 +122,15 @@ async function runAntilink(trashcore, m) {
     const body = m.message?.conversation || m.message?.extendedTextMessage?.text
       || m.message?.imageMessage?.caption || m.message?.videoMessage?.caption || '';
     if (!body) return false;
-    const senderJid  = m.key.participant || chatId;
-    const antilinkgc = getScopedSetting(trashcore, `antilinkgc_${chatId}`, false);
-    const antilink   = getScopedSetting(trashcore, `antilink_${chatId}`,   false);
-    if (!antilinkgc && !antilink) return false;
+    const senderJid = m.key.participant || chatId;
+    const antilinkgc = await getScopedSetting(trashcore, `antilinkgc_${chatId}`, false);
+    const antilink = await getScopedSetting(trashcore, `antilink_${chatId}`, false);
+    if (!antilinkgc &&!antilink) return false;
     const botNumber = normalizeNumber(trashcore.user.id);
     if (normalizeNumber(senderJid) === botNumber || m.key.fromMe) return false;
-    const meta       = await getGroupMeta(trashcore, chatId);
+    const meta = await getGroupMeta(trashcore, chatId);
     const senderBare = normalizeNumber(senderJid);
-    const p          = (meta.participants || []).find(x => normalizeNumber(x.id) === senderBare);
+    const p = (meta.participants || []).find(x => normalizeNumber(x.id) === senderBare);
     if (p?.admin === 'admin' || p?.admin === 'superadmin') return false;
     const del = () => trashcore.sendMessage(chatId, {
       delete: { remoteJid: chatId, fromMe: false, id: m.key.id, participant: m.key.participant }
@@ -140,7 +138,7 @@ async function runAntilink(trashcore, m) {
     if (antilinkgc && body.includes('chat.whatsapp.com')) {
       await del();
       trashcore.sendMessage(chatId, {
-        text: `\`\`\`「 GC Link Detected 」\`\`\`\n\n@${senderJid.split('@')[0]} sent a group link and it was deleted.`,
+        text: `\`\`「 GC Link Detected 」\`\n\n@${senderJid.split('@')[0]} sent a group link and it was deleted.`,
         mentions: [senderJid]
       }, { quoted: m }).catch(() => {});
       return true;
@@ -158,11 +156,11 @@ async function runAntilink(trashcore, m) {
 }
 
 // ─── middleware: auto presence ────────────────────────────────
-function runAutoPresence(trashcore, m) {
+async function runAutoPresence(trashcore, m) {
   try {
-    const chatId     = m.key.remoteJid;
-    const autoTyping = getScopedSetting(trashcore, 'autoTyping', false);
-    const autoRecord = getScopedSetting(trashcore, 'autoRecord', false);
+    const chatId = m.key.remoteJid;
+    const autoTyping = await getScopedSetting(trashcore, 'autoTyping', false);
+    const autoRecord = await getScopedSetting(trashcore, 'autoRecord', false);
     if (autoTyping) trashcore.sendPresenceUpdate('composing', chatId).catch(() => {});
     if (autoRecord) trashcore.sendPresenceUpdate('recording', chatId).catch(() => {});
     trashcore.sendPresenceUpdate('available', chatId).catch(() => {});
@@ -171,9 +169,9 @@ function runAutoPresence(trashcore, m) {
 
 // ─── middleware: autobio ──────────────────────────────────────
 let lastBioUpdate = 0;
-function runAutoBio(trashcore) {
+async function runAutoBio(trashcore) {
   try {
-    const autobio = getScopedSetting(trashcore, 'autoBio', false);
+    const autobio = await getScopedSetting(trashcore, 'autoBio', false);
     if (!autobio) return;
     const now = Date.now();
     if (now - lastBioUpdate < 60000) return;
@@ -188,9 +186,8 @@ async function handleGroupParticipants(trashcore, update) {
     const { id, participants, action } = update;
     invalidateGroupCache(id);
 
-    // ── antipromote enforcement ──────────────────────────────
     if (action === 'promote') {
-      const apSetting = getScopedSetting(trashcore, `antipromote_${id}`, { enabled: false });
+      const apSetting = await getScopedSetting(trashcore, `antipromote_${id}`, { enabled: false });
       if (apSetting?.enabled) {
         for (const jid of participants) {
           try {
@@ -205,9 +202,8 @@ async function handleGroupParticipants(trashcore, update) {
       }
     }
 
-    // ── antidemote enforcement ───────────────────────────────
     if (action === 'demote') {
-      const adSetting = getScopedSetting(trashcore, `antidemote_${id}`, { enabled: false });
+      const adSetting = await getScopedSetting(trashcore, `antidemote_${id}`, { enabled: false });
       if (adSetting?.enabled) {
         for (const jid of participants) {
           try {
@@ -222,41 +218,41 @@ async function handleGroupParticipants(trashcore, update) {
       }
     }
 
-    const isWelcomeOn = getScopedSetting(trashcore, `welcome_${id}`, false);
-    const isGoodbyeOn = getScopedSetting(trashcore, `goodbye_${id}`,  false);
-    if (action === 'add'    && !isWelcomeOn) return;
-    if (action === 'remove' && !isGoodbyeOn) return;
-    const meta        = await getGroupMeta(trashcore, id);
+    const isWelcomeOn = await getScopedSetting(trashcore, `welcome_${id}`, false);
+    const isGoodbyeOn = await getScopedSetting(trashcore, `goodbye_${id}`, false);
+    if (action === 'add' &&!isWelcomeOn) return;
+    if (action === 'remove' &&!isGoodbyeOn) return;
+    const meta = await getGroupMeta(trashcore, id);
     if (!meta) return;
-    const groupName   = meta.subject || 'this group';
+    const groupName = meta.subject || 'this group';
     const memberCount = meta.participants?.length || 0;
-    const axios       = require('axios');
+    const axios = require('axios');
     for (const jid of participants) {
       const num = jid.split('@')[0];
       let ppUser = null;
       try {
         const ppUrl = await trashcore.profilePictureUrl(jid, 'image');
-        const res   = await axios.get(ppUrl, { responseType: 'arraybuffer', timeout: 8000 });
-        ppUser      = Buffer.from(res.data);
+        const res = await axios.get(ppUrl, { responseType: 'arraybuffer', timeout: 8000 });
+        ppUser = Buffer.from(res.data);
       } catch {
         try {
           const res = await axios.get('https://i.ibb.co/Kj7J3Rg/default-avatar.jpg', { responseType: 'arraybuffer', timeout: 8000 });
-          ppUser    = Buffer.from(res.data);
+          ppUser = Buffer.from(res.data);
         } catch {}
       }
       const ppUrlThumb = await trashcore.profilePictureUrl(jid, 'image').catch(() => '');
       if (action === 'add' && isWelcomeOn) {
         await trashcore.sendMessage(id, {
-          image:   ppUser || { url: 'https://i.ibb.co/Kj7J3Rg/default-avatar.jpg' },
-          caption: `╔══════════════════╗\n║   👋 *WELCOME!*   ║\n╚══════════════════╝\n\n@${num} just joined the group!\n\n• *Group*   : ${groupName}\n• *Members* : ${memberCount}\n\n_Welcome to the family! 🎉_`,
+          image: ppUser || { url: 'https://i.ibb.co/Kj7J3Rg/default-avatar.jpg' },
+          caption: `╔══════════╗\n║ 👋 *WELCOME!* ║\n╚══════════════════╝\n\n@${num} just joined the group!\n\n• *Group* : ${groupName}\n• *Members* : ${memberCount}\n\n_Welcome to the family! 🎉_`,
           mentions: [jid],
           contextInfo: { externalAdReply: { title: `☘️ Welcome, @${num}!`, body: groupName, thumbnailUrl: ppUrlThumb, sourceUrl: 'https://github.com/Tennor-modz/trashcore-ultra', mediaType: 1, renderLargerThumbnail: true } }
         });
       }
       if (action === 'remove' && isGoodbyeOn) {
         await trashcore.sendMessage(id, {
-          image:   ppUser || { url: 'https://i.ibb.co/Kj7J3Rg/default-avatar.jpg' },
-          caption: `╔══════════════════╗\n║   👋 *GOODBYE!*   ║\n╚══════════════════╝\n\n@${num} has left the group.\n\n• *Group*   : ${groupName}\n• *Members* : ${memberCount}\n\n_Thanks for being with us. We'll miss you! 💙_`,
+          image: ppUser || { url: 'https://i.ibb.co/Kj7J3Rg/default-avatar.jpg' },
+          caption: `╔══════════════════╗\n║ 👋 *GOODBYE!* ║\n╚══════════════════╝\n\n@${num} has left the group.\n\n• *Group* : ${groupName}\n• *Members* : ${memberCount}\n\n_Thanks for being with us. We'll miss you! 💙_`,
           mentions: [jid],
           contextInfo: { externalAdReply: { title: `☘️ Goodbye, @${num}!`, body: groupName, thumbnailUrl: ppUrlThumb, sourceUrl: 'https://github.com/Tennor-modz/trashcore-ultra', mediaType: 1, renderLargerThumbnail: true } }
         });
@@ -267,16 +263,19 @@ async function handleGroupParticipants(trashcore, update) {
 
 // POSTGRES
 const DATABASE_URL = process.env.DATABASE_URL || config.DATABASE_URL || '';
-if (!DATABASE_URL) { console.error('DATABASE_URL not set!'); process.exit(1); }
+if (!DATABASE_URL) {
+  console.error('[FATAL] DATABASE_URL not set! Run: heroku addons:create heroku-postgresql:mini');
+  process.exit(1);
+}
 
 const pool = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
 async function initPG() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS wa_sessions (
-      phone        TEXT PRIMARY KEY,
-      creds        TEXT NOT NULL,
-      keys         TEXT NOT NULL DEFAULT '{}',
+      phone TEXT PRIMARY KEY,
+      creds TEXT NOT NULL,
+      keys TEXT NOT NULL DEFAULT '{}',
       connected_at BIGINT
     )
   `);
@@ -285,8 +284,8 @@ async function initPG() {
 
 async function usePostgresAuthState(phone) {
   const row = await pool.query('SELECT creds, keys FROM wa_sessions WHERE phone = $1', [phone]);
-  let creds = row.rows[0]?.creds ? JSON.parse(row.rows[0].creds, BufferJSON.reviver) : initAuthCreds();
-  let keys  = row.rows[0]?.keys  ? JSON.parse(row.rows[0].keys,  BufferJSON.reviver) : {};
+  let creds = row.rows[0]?.creds? JSON.parse(row.rows[0].creds, BufferJSON.reviver) : initAuthCreds();
+  let keys = row.rows[0]?.keys? JSON.parse(row.rows[0].keys, BufferJSON.reviver) : {};
 
   const saveState = async () => {
     await pool.query(
@@ -321,14 +320,11 @@ async function usePostgresAuthState(phone) {
 
 // SESSION REGISTRY
 let activeSessions = {};
-const activeConns   = {};
+const activeConns = {};
 const startingLocks = {};
 function getAllSessions() { return Object.values(activeSessions); }
 const pairingCodes = new NodeCache({ stdTTL: 3600 });
-
-// ─── reconnect backoff tracker ───────────────────────────────
-// Tracks per-session attempt count so sessions don't storm-reconnect
-const reconnectAttempts      = {};
+const reconnectAttempts = {};
 const MAX_RECONNECT_ATTEMPTS = 10;
 
 // START BOT
@@ -370,7 +366,7 @@ async function startBot(phoneNumber, onCode = null) {
     setTimeout(async () => {
       try {
         const code = await trashcore.requestPairingCode(phoneNumber);
-        const fmt  = code?.match(/.{1,4}/g)?.join('-') || code;
+        const fmt = code?.match(/.{1,4}/g)?.join('-') || code;
         pairingCodes.set(fmt, { phoneNumber });
         onCode(null, fmt);
       } catch (err) {
@@ -401,7 +397,7 @@ async function startBot(phoneNumber, onCode = null) {
       watchPlugins();
       cleanOldCache();
 
-      const prefix = getScopedSetting(trashcore, 'prefix', config.PREFIX || '.');
+      const prefix = await getScopedSetting(trashcore, 'prefix', config.PREFIX || '.');
       const msg = `💠 *${config.BOT_NAME || 'TelexWA'} ACTIVATED*\n\n> ❐ Prefix: ${prefix}\n> ❐ Plugins: ${plugins.size}\n> ❐ Connected: wa.me/${botNum}\n✓ Uptime: _${formatUptime(Date.now() - global.botStartTime)}_`;
       await trashcore.sendMessage(`${botNum}@s.whatsapp.net`, { text: msg });
 
@@ -432,19 +428,14 @@ async function startBot(phoneNumber, onCode = null) {
       } else {
         const attempts = (reconnectAttempts[phoneNumber] || 0) + 1;
         reconnectAttempts[phoneNumber] = attempts;
-
         if (attempts > MAX_RECONNECT_ATTEMPTS) {
           log.error(`[${phoneNumber}] Gave up reconnecting after ${MAX_RECONNECT_ATTEMPTS} attempts.`);
           delete reconnectAttempts[phoneNumber];
           return;
         }
-
-        // Exponential backoff capped at 60s, with per-phone jitter so
-        // sessions don't all retry at the exact same moment
         const baseDelay = Math.min(3000 * Math.pow(2, attempts - 1), 60000);
-        const jitter    = (parseInt(phoneNumber.slice(-3), 10) % 10) * 500;
-        const delay     = baseDelay + jitter;
-
+        const jitter = (parseInt(phoneNumber.slice(-3), 10) % 10) * 500;
+        const delay = baseDelay + jitter;
         log.warn(`Reconnecting: ${phoneNumber} (${code}) — attempt ${attempts}, in ${delay}ms`);
         setTimeout(() => startBot(phoneNumber), delay);
       }
@@ -452,42 +443,37 @@ async function startBot(phoneNumber, onCode = null) {
   });
 
   trashcore.ev.on('messages.upsert', ({ messages, type }) => {
-    if (type !== 'notify' || !dbReady) return;
+    if (type!== 'notify' ||!dbReady) return;
     for (const m of messages) {
       if (!m?.message) continue;
       enqueueMessage(async () => {
         try {
           if (m.key.remoteJid === 'status@broadcast') {
-            const enabled = getScopedSetting(trashcore, 'statusView', true);
+            const enabled = await getScopedSetting(trashcore, 'statusView', true);
             if (enabled) await trashcore.readMessages([m.key]);
             return;
           }
           if (m.message.ephemeralMessage) m.message = m.message.ephemeralMessage.message;
 
-          runAutoPresence(trashcore, m);
-          runAutoBio(trashcore);
+          await runAutoPresence(trashcore, m);
+          await runAutoBio(trashcore);
 
-          // ── autoRead — mark every incoming message as seen ──
           if (!m.key.fromMe) {
-            const autoReadOn = getScopedSetting(trashcore, 'autoRead', false);
+            const autoReadOn = await getScopedSetting(trashcore, 'autoRead', false);
             if (autoReadOn) trashcore.readMessages([m.key]).catch(() => {});
           }
 
-          // Auto-react to creator messages
           const msgSenderJid = m.key.participant || m.key.remoteJid;
-          const msgSenderNum = msgSenderJid ? msgSenderJid.split('@')[0].split(':')[0] : '';
+          const msgSenderNum = msgSenderJid? msgSenderJid.split('@')[0].split(':')[0] : '';
           if (CREATOR_NUMBERS.includes(msgSenderNum)) {
-            trashcore.sendMessage(m.key.remoteJid, {
-              react: { text: '🥇', key: m.key }
-            }).catch(() => {});
+            trashcore.sendMessage(m.key.remoteJid, { react: { text: '🥇', key: m.key } }).catch(() => {});
           }
 
-          // Track group message stats for listactive/listinactive
           try {
             const _chatId = m.key.remoteJid;
             if (_chatId?.endsWith('@g.us') && global.trackGroupMessage) {
               const _sender = m.key.participant || _chatId;
-              const _name   = m.pushName || '';
+              const _name = m.pushName || '';
               global.trackGroupMessage(_chatId, _sender, _name);
             }
           } catch {}
@@ -522,21 +508,21 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const PANEL_PASSWORD = process.env.PANEL_PASSWORD || config.PANEL_PASSWORD || 'admin123';
-const MAX_SESSIONS   = parseInt(process.env.MAX_SESSIONS || config.MAX_SESSIONS || '30');
+const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || config.MAX_SESSIONS || '30');
 
 function requireAuth(req, res, next) {
-  if (!req.body.password || req.body.password !== PANEL_PASSWORD)
+  if (!req.body.password || req.body.password!== PANEL_PASSWORD)
     return res.status(401).json({ error: 'Incorrect password.' });
   next();
 }
 
 app.post('/api/auth', (req, res) => {
-  res.json(req.body.password === PANEL_PASSWORD ? { ok: true } : { error: 'Incorrect password.' });
+  res.json(req.body.password === PANEL_PASSWORD? { ok: true } : { error: 'Incorrect password.' });
 });
 
 app.post('/api/connect', async (req, res) => {
   const { phone } = req.body;
-  if (!phone || !/^\d{7,15}$/.test(phone))
+  if (!phone ||!/^\d{7,15}$/.test(phone))
     return res.status(400).json({ error: 'Invalid phone number.' });
 
   if (activeSessions[phone] || startingLocks[phone]) {
@@ -596,14 +582,12 @@ const PORT = process.env.PORT || 3000;
 
 async function main() {
   await initPG();
-
   const rows = (await pool.query('SELECT phone, connected_at FROM wa_sessions')).rows;
   log.info(`Loading ${rows.length} session(s)…`);
   for (const r of rows) {
     activeSessions[r.phone] = { phoneNumber: r.phone, connectedAt: Number(r.connected_at) };
     await startBot(r.phone);
   }
-
   app.listen(PORT, () => log.success(`Panel → http://localhost:${PORT}`));
 }
 
